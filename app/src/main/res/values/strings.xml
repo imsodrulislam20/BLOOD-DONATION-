@@ -1,3 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">স্বেচ্ছায় রক্তদান</string>
+    <string name="app_name">Blood Donation</string>
+    <string name="welcome">Welcome to Blood Donation App</string>
+    <string name="description">Find donors and recipients in your community</string>
 </resources>
