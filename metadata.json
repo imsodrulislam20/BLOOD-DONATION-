@@ -1,0 +1,6 @@
+{
+  "name": "স্বেচ্ছায় রক্তদান",
+  "description": "A feature-rich Voluntary Blood Donation app with Firebase and Room integration, including fully functional push notifications.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
