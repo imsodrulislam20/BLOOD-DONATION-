@@ -1,96 +1,21 @@
-# Blood Donation App
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+</div>
 
-A mobile application to connect blood donors and recipients in the community.
+# Run and deploy your AI Studio app
 
-## Features
-- Find blood donors nearby
-- Post blood donation requests
-- User profiles and verification
-- Real-time notifications
-- Blood bank integration
+This contains everything you need to run your app locally.
 
-## Tech Stack
-- **Language**: Kotlin
-- **Framework**: Android SDK 34
-- **Minimum SDK**: Android 7.0 (API 24)
-- **Build Tool**: Gradle
-- **Networking**: Retrofit + OkHttp
-- **Database**: Room
+View your app in AI Studio: https://ai.studio/apps/f4ba5f08-b910-4482-ab55-a673db6d473b
 
-## Setup Instructions
+## Run Locally
 
-### Prerequisites
-- Android Studio (Latest version)
-- JDK 11 or higher
-- Android SDK 34+
+**Prerequisites:**  [Android Studio](https://developer.android.com/studio)
 
-### Building the APK
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/imsodrulislam20/BLOOD-DONATION-.git
-   cd BLOOD-DONATION-
-   ```
-
-2. **Open in Android Studio**
-   - Open Android Studio
-   - Select "Open an existing Android Studio project"
-   - Navigate to the project folder
-
-3. **Build the APK**
-   - Go to `Build` → `Build Bundle(s) / APK(s)` → `Build APK(s)`
-   - Or use the terminal:
-     ```bash
-     ./gradlew assembleRelease
-     ```
-   - The APK will be generated in: `app/build/outputs/apk/release/`
-
-4. **Debug APK**
-   - For testing/debugging:
-     ```bash
-     ./gradlew assembleDebug
-     ```
-   - Debug APK location: `app/build/outputs/apk/debug/`
-
-### Install on Device/Emulator
-
-```bash
-adb install app/build/outputs/apk/release/app-release.apk
-```
-
-## Project Structure
-
-```
-BLOOD-DONATION-/
-├── app/
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/com/blooddonation/app/
-│   │   │   │   └── MainActivity.kt
-│   │   │   └── res/
-│   │   │       ├── layout/
-│   │   │       ├── values/
-│   │   │       └── drawable/
-│   │   │   └── AndroidManifest.xml
-│   │   └── test/
-│   └── build.gradle.kts
-├── build.gradle.kts
-├── settings.gradle.kts
-└── README.md
-```
-
-## Development
-
-To add new features:
-1. Create a new branch from `android-app-setup`
-2. Implement your feature
-3. Test on emulator or device
-4. Create a pull request
-
-## License
-
-MIT License - Feel free to use this project for your purposes.
-
-## Support
-
-For issues or questions, please open a GitHub issue.
+1. Open Android Studio
+2. Select **Open** and choose the directory containing this project
+3. Allow Android Studio to fix any incompatibilities as it imports the project.
+4. Create a file named `.env` in the project directory and set `GEMINI_API_KEY` in that file to your Gemini API key (see `.env.example` for an example)
+5. Remove this line from the app's `build.gradle.kts` file: `signingConfig = signingConfigs.getByName("debugConfig")`
+6. Run the app on an emulator or physical device

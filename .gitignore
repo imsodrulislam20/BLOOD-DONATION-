@@ -1,31 +1,18 @@
-# Gradle files
-.gradle/
-build/
-*.apk
-*.aar
-*.ap_
-*.aab
-
-# Local configuration file (sdk path, etc)
-local.properties
-
-# Android Studio
-.idea/
 *.iml
-*.iws
-*.ipr
+.gradle
+.kotlin
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
 .DS_Store
-out/
-
-# Kotlin
-*.kt.bak
-
-# Maven
-target/
-*.jar
-*.war
-*.ear
-
-# Virtual machines
-.venv/
-venv/
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+.env
+debug.keystore
