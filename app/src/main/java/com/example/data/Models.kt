@@ -2,8 +2,11 @@ package com.example.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.google.firebase.firestore.IgnoreExtraProperties
+import com.google.firebase.firestore.PropertyName
 import java.io.Serializable
 
+@IgnoreExtraProperties
 @Entity(tableName = "blood_requests")
 data class BloodRequest(
     @PrimaryKey val id: String = "",
@@ -19,6 +22,7 @@ data class BloodRequest(
     val createdAt: Long = System.currentTimeMillis()
 ) : Serializable
 
+@IgnoreExtraProperties
 @Entity(tableName = "donors")
 data class Donor(
     @PrimaryKey val id: String = "",
@@ -37,12 +41,14 @@ data class Donor(
     val photoURL: String? = null
 ) : Serializable
 
+@IgnoreExtraProperties
 @Entity(tableName = "banners")
 data class Banner(
     @PrimaryKey val id: String = "",
     val imageUrl: String = ""
 ) : Serializable
 
+@IgnoreExtraProperties
 @Entity(tableName = "emergency_contacts")
 data class EmergencyContact(
     @PrimaryKey val id: String = "",
@@ -52,6 +58,7 @@ data class EmergencyContact(
     val description: String = ""
 ) : Serializable
 
+@IgnoreExtraProperties
 @Entity(tableName = "donation_records")
 data class DonationRecord(
     @PrimaryKey val id: String = "",
@@ -61,6 +68,7 @@ data class DonationRecord(
     val note: String = ""
 ) : Serializable
 
+@IgnoreExtraProperties
 @Entity(tableName = "users")
 data class AppUser(
     @PrimaryKey val uid: String = "",
@@ -74,7 +82,9 @@ data class AppUser(
     val donations: Int = 0,
     val points: Int = 0,
     val lastDonationDate: Long? = null,
-    val isDonor: Boolean = true,
+    @get:PropertyName("isDonor")
+    @set:PropertyName("isDonor")
+    var isDonor: Boolean = true,
     val donorsAdded: Int = 0,
     val createdAt: Long = System.currentTimeMillis()
 ) : Serializable

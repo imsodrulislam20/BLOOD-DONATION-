@@ -313,14 +313,16 @@ fun FindDonorsScreen(
                         trailingIcon = {
                             Icon(
                                 imageVector = if (bloodExpanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
-                                contentDescription = null,
-                                modifier = Modifier.clickable { bloodExpanded = !bloodExpanded }
+                                contentDescription = null
                             )
                         },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { bloodExpanded = !bloodExpanded },
+                        modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable { bloodExpanded = !bloodExpanded }
                     )
                     DropdownMenu(
                         expanded = bloodExpanded,
@@ -535,14 +537,16 @@ fun BloodRequestFormScreen(
                         trailingIcon = {
                             Icon(
                                 imageVector = if (urgencyExpanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
-                                contentDescription = null,
-                                modifier = Modifier.clickable { urgencyExpanded = !urgencyExpanded }
+                                contentDescription = null
                             )
                         },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { urgencyExpanded = !urgencyExpanded },
+                        modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable { urgencyExpanded = !urgencyExpanded }
                     )
                     DropdownMenu(
                         expanded = urgencyExpanded,

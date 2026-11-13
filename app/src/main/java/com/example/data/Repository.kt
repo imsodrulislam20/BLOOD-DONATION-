@@ -1,13 +1,19 @@
 package com.example.data
 
 import android.util.Log
-import com.google.firebase.database.DataSnapshot
-import com.google.firebase.database.DatabaseError
-import com.google.firebase.database.ValueEventListener
+import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 class BloodDonationRepository(
@@ -21,69 +27,77 @@ class BloodDonationRepository(
     val banners: Flow<List<Banner>> = dao.getBanners()
     val emergencyContacts: Flow<List<EmergencyContact>> = dao.getEmergencyContacts()
 
+    private val _isRealtimeActive = MutableStateFlow(false)
+    val isRealtimeActive: StateFlow<Boolean> = _isRealtimeActive.asStateFlow()
+
+    private val listeners = mutableListOf<ListenerRegistration>()
+
     init {
-        // Pre-populate defaults if Room is empty
+        // Seed default Bangladesh emergency contacts once if local cache is empty
         scope.launch(Dispatchers.IO) {
-            dao.getEmergencyContacts().collect { list ->
-                if (list.isEmpty()) {
-                    val defaults = listOf(
-                        EmergencyContact("em_1", "জাতীয় জরুরি সেবা", "৯৯৯", "সারাদেশ", "সব ধরনের জরুরি প্রয়োজনে"),
-                        EmergencyContact("em_2", "ফায়ার সার্ভিস", "১০২", "সারাদেশ", "অগ্নিকাণ্ড ও দুর্যোগ"),
-                        EmergencyContact("em_3", "অ্যাম্বুলেন্স", "১৯৯", "সারাদেশ", "জরুরি চিকিৎসা সেবা"),
-                        EmergencyContact("em_4", "পুলিশ", "১০০", "সারাদেশ", "জরুরি পুলিশ সহায়তা")
-                    )
-                    dao.insertEmergencyContacts(defaults)
-                }
+            if (dao.getEmergencyContactsCount() == 0) {
+                val defaults = listOf(
+                    EmergencyContact("em_1", "জাতীয় জরুরি সেবা", "৯৯৯", "সারাদেশ", "সব ধরনের জরুরি প্রয়োজনে"),
+                    EmergencyContact("em_2", "ফায়ার সার্ভিস", "১০২", "সারাদেশ", "অগ্নিকাণ্ড ও দুর্যোগ"),
+                    EmergencyContact("em_3", "অ্যাম্বুলেন্স", "১৯৯", "সারাদেশ", "জরুরি চিকিৎসা সেবা"),
+                    EmergencyContact("em_4", "পুলিশ", "১০০", "সারাদেশ", "জরুরি পুলিশ সহায়তা")
+                )
+                dao.insertEmergencyContacts(defaults)
             }
         }
 
-        // Start Firebase real-time listeners if Firebase is initialized
-        if (FirebaseManager.isInitialized && FirebaseManager.db != null) {
-            setupFirebaseSync()
+        // Start Cloud Firestore real-time snapshot listeners if Firebase is initialized
+        if (FirebaseManager.isInitialized && FirebaseManager.firestore != null) {
+            setupFirestoreRealtimeSync()
         }
     }
 
-    private fun setupFirebaseSync() {
-        val database = FirebaseManager.db ?: return
+    private fun setupFirestoreRealtimeSync() {
+        val firestore = FirebaseManager.firestore ?: return
 
-        // 1. Sync Requests
-        database.getReference("requests").addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
+        // 1. Real-time Blood Requests listener
+        val requestsReg = firestore.collection("requests")
+            .orderBy("createdAt", Query.Direction.DESCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Firestore requests snapshot error: ${error.message}")
+                    return@addSnapshotListener
+                }
+                if (snapshot == null) return@addSnapshotListener
+                _isRealtimeActive.value = true
+
                 scope.launch(Dispatchers.IO) {
-                    val list = mutableListOf<BloodRequest>()
-                    snapshot.children.forEach { child ->
+                    val list = snapshot.documents.mapNotNull { doc ->
                         try {
-                            val req = child.getValue(BloodRequest::class.java)
-                            if (req != null) {
-                                list.add(req.copy(id = child.key ?: ""))
-                            }
+                            doc.toObject(BloodRequest::class.java)?.copy(id = doc.id)
                         } catch (e: Exception) {
-                            Log.e(TAG, "Error parsing request from firebase: ${e.message}")
+                            Log.e(TAG, "Error parsing request ${doc.id}: ${e.message}")
+                            null
                         }
                     }
-                    dao.clearBloodRequests()
-                    if (list.isNotEmpty()) {
-                        dao.insertBloodRequests(list)
-                    }
+                    dao.replaceBloodRequests(list)
                 }
             }
+        listeners.add(requestsReg)
 
-            override fun onCancelled(error: DatabaseError) {
-                Log.e(TAG, "Firebase requests read cancelled: ${error.message}")
-            }
-        })
+        // 2. Real-time Donors / Users listener
+        val usersReg = firestore.collection("users")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Firestore users snapshot error: ${error.message}")
+                    return@addSnapshotListener
+                }
+                if (snapshot == null) return@addSnapshotListener
+                _isRealtimeActive.value = true
 
-        // 2. Sync Donors/Users
-        database.getReference("users").addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
                 scope.launch(Dispatchers.IO) {
-                    val donorList = mutableListOf<Donor>()
-                    snapshot.children.forEach { child ->
+                    val donorList = snapshot.documents.mapNotNull { doc ->
                         try {
-                            val userObj = child.getValue(AppUser::class.java)
-                            if (userObj != null && userObj.isDonor) {
-                                val donor = Donor(
-                                    id = child.key ?: "",
+                            val userObj = doc.toObject(AppUser::class.java)
+                            val isDonorFlag = doc.getBoolean("isDonor") ?: userObj?.isDonor ?: true
+                            if (userObj != null && isDonorFlag && userObj.bloodGroup.isNotBlank()) {
+                                Donor(
+                                    id = doc.id,
                                     name = userObj.name,
                                     bloodGroup = userObj.bloodGroup,
                                     phone = userObj.phone,
@@ -92,122 +106,173 @@ class BloodDonationRepository(
                                     thana = userObj.thana,
                                     donations = userObj.donations,
                                     points = userObj.points,
+                                    addedByEmail = userObj.email,
                                     lastDonationDate = userObj.lastDonationDate,
                                     createdAt = userObj.createdAt
                                 )
-                                donorList.add(donor)
+                            } else {
+                                null
                             }
                         } catch (e: Exception) {
                             try {
-                                val directDonor = child.getValue(Donor::class.java)
-                                if (directDonor != null) {
-                                    donorList.add(directDonor.copy(id = child.key ?: ""))
-                                }
+                                doc.toObject(Donor::class.java)?.copy(id = doc.id)
                             } catch (ex: Exception) {
-                                Log.e(TAG, "Error parsing donor: ${ex.message}")
+                                Log.e(TAG, "Error parsing donor ${doc.id}: ${ex.message}")
+                                null
                             }
                         }
-                    }
-                    dao.clearDonors()
-                    if (donorList.isNotEmpty()) {
-                        dao.insertDonors(donorList)
-                    }
+                    }.sortedByDescending { it.createdAt }
+
+                    dao.replaceDonors(donorList)
                 }
             }
+        listeners.add(usersReg)
 
-            override fun onCancelled(error: DatabaseError) {
-                Log.e(TAG, "Firebase users read cancelled: ${error.message}")
-            }
-        })
+        // 3. Real-time Banners listener
+        val bannersReg = firestore.collection("banners")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Firestore banners snapshot error: ${error.message}")
+                    return@addSnapshotListener
+                }
+                if (snapshot == null) return@addSnapshotListener
 
-        // 3. Sync Banners
-        database.getReference("banners").addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
                 scope.launch(Dispatchers.IO) {
-                    val list = mutableListOf<Banner>()
-                    snapshot.children.forEach { child ->
-                        val url = child.child("imageUrl").getValue(String::class.java) ?: ""
-                        if (url.isNotEmpty()) {
-                            list.add(Banner(id = child.key ?: "", imageUrl = url))
-                        }
+                    val list = snapshot.documents.mapNotNull { doc ->
+                        val url = doc.getString("imageUrl") ?: ""
+                        if (url.isNotEmpty()) Banner(id = doc.id, imageUrl = url) else null
                     }
-                    if (list.isNotEmpty()) {
-                        dao.clearBanners()
-                        dao.insertBanners(list)
-                    }
+                    dao.replaceBanners(list)
                 }
             }
+        listeners.add(bannersReg)
 
-            override fun onCancelled(error: DatabaseError) {}
-        })
+        // 4. Real-time Emergency Contacts listener
+        val contactsReg = firestore.collection("emergencyContacts")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "Firestore emergencyContacts snapshot error: ${error.message}")
+                    return@addSnapshotListener
+                }
+                if (snapshot == null) return@addSnapshotListener
 
-        // 4. Sync Emergency Contacts
-        database.getReference("emergencyContacts").addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
                 scope.launch(Dispatchers.IO) {
-                    val list = mutableListOf<EmergencyContact>()
-                    snapshot.children.forEach { child ->
+                    val list = snapshot.documents.mapNotNull { doc ->
                         try {
-                            val contact = child.getValue(EmergencyContact::class.java)
-                            if (contact != null) {
-                                list.add(contact.copy(id = child.key ?: ""))
-                            }
+                            doc.toObject(EmergencyContact::class.java)?.copy(id = doc.id)
                         } catch (e: Exception) {
-                            Log.e(TAG, "Error parsing contact: ${e.message}")
+                            Log.e(TAG, "Error parsing emergency contact ${doc.id}: ${e.message}")
+                            null
                         }
                     }
                     if (list.isNotEmpty()) {
-                        dao.clearEmergencyContacts()
-                        dao.insertEmergencyContacts(list)
+                        dao.replaceEmergencyContacts(list)
                     }
                 }
             }
+        listeners.add(contactsReg)
+    }
 
-            override fun onCancelled(error: DatabaseError) {}
-        })
+    fun observeUserRealtime(uid: String): Flow<AppUser?> = callbackFlow {
+        val firestore = FirebaseManager.firestore
+        if (!FirebaseManager.isInitialized || firestore == null) {
+            trySend(dao.getUserById(uid))
+            close()
+            return@callbackFlow
+        }
+
+        val registration = firestore.collection("users").document(uid)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e(TAG, "User profile snapshot error: ${error.message}")
+                    return@addSnapshotListener
+                }
+                if (snapshot != null && snapshot.exists()) {
+                    val user = snapshot.toObject(AppUser::class.java)?.copy(uid = snapshot.id)
+                    if (user != null) {
+                        scope.launch(Dispatchers.IO) { dao.insertUser(user) }
+                        trySend(user)
+                    }
+                }
+            }
+        awaitClose { registration.remove() }
+    }
+
+    suspend fun getOrFetchUser(uid: String, fallbackName: String, fallbackEmail: String): AppUser {
+        return withContext(Dispatchers.IO) {
+            val firestore = FirebaseManager.firestore
+            if (FirebaseManager.isInitialized && firestore != null) {
+                try {
+                    val doc = firestore.collection("users").document(uid).get().await()
+                    if (doc.exists()) {
+                        val remoteUser = doc.toObject(AppUser::class.java)?.copy(uid = uid)
+                        if (remoteUser != null) {
+                            dao.insertUser(remoteUser)
+                            return@withContext remoteUser
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not fetch user from Firestore: ${e.message}")
+                }
+            }
+            dao.getUserById(uid) ?: AppUser(
+                uid = uid,
+                name = fallbackName.ifBlank { "ইউজার" },
+                email = fallbackEmail
+            )
+        }
+    }
+
+    suspend fun upsertUser(user: AppUser) = withContext(Dispatchers.IO) {
+        dao.insertUser(user)
+        val firestore = FirebaseManager.firestore
+        if (FirebaseManager.isInitialized && firestore != null) {
+            firestore.collection("users").document(user.uid)
+                .set(user, SetOptions.merge())
+                .await()
+        }
     }
 
     suspend fun insertBloodRequest(request: BloodRequest) = withContext(Dispatchers.IO) {
-        if (FirebaseManager.isInitialized && FirebaseManager.db != null) {
-            val ref = FirebaseManager.db!!.getReference("requests").push()
-            val newRequest = request.copy(id = ref.key ?: "")
-            ref.setValue(newRequest)
+        val firestore = FirebaseManager.firestore
+        if (FirebaseManager.isInitialized && firestore != null) {
+            val docRef = firestore.collection("requests").document()
+            val newRequest = request.copy(id = docRef.id)
             dao.insertBloodRequest(newRequest)
+            docRef.set(newRequest).await()
         } else {
             val localId = "req_${System.currentTimeMillis()}"
-            val localRequest = request.copy(id = localId)
-            dao.insertBloodRequest(localRequest)
+            dao.insertBloodRequest(request.copy(id = localId))
         }
     }
 
     suspend fun updateBloodRequestStatus(requestId: String, status: String) = withContext(Dispatchers.IO) {
-        if (FirebaseManager.isInitialized && FirebaseManager.db != null) {
-            FirebaseManager.db!!.getReference("requests").child(requestId).child("status").setValue(status)
-        } else {
-            // Room update
-            scope.launch(Dispatchers.IO) {
-                // Find and update local request
-                dao.getBloodRequests().collect { list ->
-                    val found = list.find { it.id == requestId }
-                    if (found != null) {
-                        dao.insertBloodRequest(found.copy(status = status))
-                    }
-                }
-            }
+        dao.updateBloodRequestStatus(requestId, status)
+        val firestore = FirebaseManager.firestore
+        if (FirebaseManager.isInitialized && firestore != null) {
+            firestore.collection("requests").document(requestId)
+                .update("status", status)
+                .await()
         }
     }
 
     suspend fun deleteBloodRequest(id: String) = withContext(Dispatchers.IO) {
-        if (FirebaseManager.isInitialized && FirebaseManager.db != null) {
-            FirebaseManager.db!!.getReference("requests").child(id).removeValue()
-        }
         dao.deleteBloodRequest(id)
+        val firestore = FirebaseManager.firestore
+        if (FirebaseManager.isInitialized && firestore != null) {
+            firestore.collection("requests").document(id).delete().await()
+        }
     }
 
     suspend fun insertDonor(donor: Donor) = withContext(Dispatchers.IO) {
-        if (FirebaseManager.isInitialized && FirebaseManager.db != null) {
-            val id = if (donor.id.isNotEmpty()) donor.id else FirebaseManager.db!!.getReference("users").push().key ?: "user_${System.currentTimeMillis()}"
-            val newDonor = donor.copy(id = id)
+        val firestore = FirebaseManager.firestore
+        if (FirebaseManager.isInitialized && firestore != null) {
+            val docRef = if (donor.id.isNotEmpty()) {
+                firestore.collection("users").document(donor.id)
+            } else {
+                firestore.collection("users").document()
+            }
+            val newDonor = donor.copy(id = docRef.id)
             val userRep = AppUser(
                 uid = newDonor.id,
                 name = newDonor.name,
@@ -223,62 +288,81 @@ class BloodDonationRepository(
                 isDonor = true,
                 createdAt = newDonor.createdAt
             )
-            FirebaseManager.db!!.getReference("users").child(newDonor.id).setValue(userRep)
             dao.insertDonor(newDonor)
+            docRef.set(userRep, SetOptions.merge()).await()
         } else {
             val localId = if (donor.id.isNotEmpty()) donor.id else "donor_${System.currentTimeMillis()}"
-            val localDonor = donor.copy(id = localId)
-            dao.insertDonor(localDonor)
+            dao.insertDonor(donor.copy(id = localId))
         }
     }
 
     suspend fun deleteDonor(id: String) = withContext(Dispatchers.IO) {
-        if (FirebaseManager.isInitialized && FirebaseManager.db != null) {
-            FirebaseManager.db!!.getReference("users").child(id).removeValue()
-        }
         dao.deleteDonor(id)
+        val firestore = FirebaseManager.firestore
+        if (FirebaseManager.isInitialized && firestore != null) {
+            firestore.collection("users").document(id).delete().await()
+        }
     }
 
     suspend fun insertBanner(banner: Banner) = withContext(Dispatchers.IO) {
-        if (FirebaseManager.isInitialized && FirebaseManager.db != null) {
-            val ref = FirebaseManager.db!!.getReference("banners").push()
-            val newBanner = banner.copy(id = ref.key ?: "")
-            ref.setValue(newBanner)
+        val firestore = FirebaseManager.firestore
+        if (FirebaseManager.isInitialized && firestore != null) {
+            val docRef = firestore.collection("banners").document()
+            val newBanner = banner.copy(id = docRef.id)
+            dao.insertBanner(newBanner)
+            docRef.set(newBanner).await()
         } else {
             val localId = "banner_${System.currentTimeMillis()}"
-            dao.insertBanners(listOf(banner.copy(id = localId)))
+            dao.insertBanner(banner.copy(id = localId))
         }
     }
 
     suspend fun deleteBanner(id: String) = withContext(Dispatchers.IO) {
-        if (FirebaseManager.isInitialized && FirebaseManager.db != null) {
-            FirebaseManager.db!!.getReference("banners").child(id).removeValue()
+        dao.deleteBanner(id)
+        val firestore = FirebaseManager.firestore
+        if (FirebaseManager.isInitialized && firestore != null) {
+            firestore.collection("banners").document(id).delete().await()
         }
     }
 
     suspend fun insertEmergencyContact(contact: EmergencyContact) = withContext(Dispatchers.IO) {
-        if (FirebaseManager.isInitialized && FirebaseManager.db != null) {
-            val ref = FirebaseManager.db!!.getReference("emergencyContacts").push()
-            val newContact = contact.copy(id = ref.key ?: "")
-            ref.setValue(newContact)
+        val firestore = FirebaseManager.firestore
+        if (FirebaseManager.isInitialized && firestore != null) {
+            val docRef = firestore.collection("emergencyContacts").document()
+            val newContact = contact.copy(id = docRef.id)
+            dao.insertEmergencyContact(newContact)
+            docRef.set(newContact).await()
         } else {
             val localId = "contact_${System.currentTimeMillis()}"
-            dao.insertEmergencyContacts(listOf(contact.copy(id = localId)))
+            dao.insertEmergencyContact(contact.copy(id = localId))
         }
     }
 
     suspend fun deleteEmergencyContact(id: String) = withContext(Dispatchers.IO) {
-        if (FirebaseManager.isInitialized && FirebaseManager.db != null) {
-            FirebaseManager.db!!.getReference("emergencyContacts").child(id).removeValue()
-        }
         dao.deleteEmergencyContact(id)
+        val firestore = FirebaseManager.firestore
+        if (FirebaseManager.isInitialized && firestore != null) {
+            firestore.collection("emergencyContacts").document(id).delete().await()
+        }
     }
 
     fun getDonationHistory(donorId: String): Flow<List<DonationRecord>> = dao.getDonationRecords(donorId)
 
     suspend fun addDonationRecord(record: DonationRecord) = withContext(Dispatchers.IO) {
-        val id = "record_${System.currentTimeMillis()}"
-        val finalRecord = record.copy(id = id)
-        dao.insertDonationRecord(finalRecord)
+        val firestore = FirebaseManager.firestore
+        if (FirebaseManager.isInitialized && firestore != null) {
+            val docRef = firestore.collection("donationRecords").document()
+            val finalRecord = record.copy(id = docRef.id)
+            dao.insertDonationRecord(finalRecord)
+            docRef.set(finalRecord).await()
+        } else {
+            val id = "record_${System.currentTimeMillis()}"
+            dao.insertDonationRecord(record.copy(id = id))
+        }
+    }
+
+    fun cleanup() {
+        listeners.forEach { it.remove() }
+        listeners.clear()
     }
 }

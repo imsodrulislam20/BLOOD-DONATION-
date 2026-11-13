@@ -255,14 +255,16 @@ fun BloodGroupSelector(
             trailingIcon = {
                 Icon(
                     imageVector = if (expanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,
-                    contentDescription = null,
-                    modifier = Modifier.clickable { expanded = !expanded }
+                    contentDescription = null
                 )
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { expanded = !expanded },
+            modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp)
+        )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clickable { expanded = !expanded }
         )
         DropdownMenu(
             expanded = expanded,
@@ -313,14 +315,16 @@ fun GeoDropdowns(
                 trailingIcon = {
                     Icon(
                         imageVector = Icons.Default.Map,
-                        contentDescription = null,
-                        modifier = Modifier.clickable { divExpanded = !divExpanded }
+                        contentDescription = null
                     )
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { divExpanded = !divExpanded },
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
+            )
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .clickable { divExpanded = !divExpanded }
             )
             DropdownMenu(
                 expanded = divExpanded,
@@ -357,15 +361,19 @@ fun GeoDropdowns(
                 trailingIcon = {
                     Icon(
                         imageVector = Icons.Default.Place,
-                        contentDescription = null,
-                        modifier = Modifier.clickable { if (selectedDivision.isNotEmpty()) distExpanded = !distExpanded }
+                        contentDescription = null
                     )
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { if (selectedDivision.isNotEmpty()) distExpanded = !distExpanded },
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
             )
+            if (selectedDivision.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clickable { distExpanded = !distExpanded }
+                )
+            }
             DropdownMenu(
                 expanded = distExpanded && selectedDivision.isNotEmpty(),
                 onDismissRequest = { distExpanded = false },
@@ -401,15 +409,19 @@ fun GeoDropdowns(
                 trailingIcon = {
                     Icon(
                         imageVector = Icons.Default.LocationCity,
-                        contentDescription = null,
-                        modifier = Modifier.clickable { if (selectedDistrict.isNotEmpty()) thanaExpanded = !thanaExpanded }
+                        contentDescription = null
                     )
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { if (selectedDistrict.isNotEmpty()) thanaExpanded = !thanaExpanded },
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
             )
+            if (selectedDistrict.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .clickable { thanaExpanded = !thanaExpanded }
+                )
+            }
             DropdownMenu(
                 expanded = thanaExpanded && selectedDistrict.isNotEmpty(),
                 onDismissRequest = { thanaExpanded = false },

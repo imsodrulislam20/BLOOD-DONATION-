@@ -9,6 +9,7 @@ import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.data.FirebaseManager
+import com.google.firebase.firestore.SetOptions
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 
@@ -28,7 +29,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
         val title = remoteMessage.notification?.title ?: remoteMessage.data["title"] ?: "নতুন রক্তের আবেদন"
         val message = remoteMessage.notification?.body ?: remoteMessage.data["body"] ?: "জরুরি রক্তদান প্রয়োজন!"
-        
+
         sendNotification(title, message)
     }
 
@@ -69,8 +70,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
     companion object {
         fun saveTokenToDatabase(token: String) {
-            if (!FirebaseManager.isInitialized || FirebaseManager.db == null) return
-            val database = FirebaseManager.db ?: return
+            if (!FirebaseManager.isInitialized || FirebaseManager.firestore == null) return
+            val firestore = FirebaseManager.firestore ?: return
             val sanitizedToken = token.replace(".", "_")
                 .replace("#", "_")
                 .replace("$", "_")
@@ -78,17 +79,28 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 .replace("[", "_")
                 .replace("]", "_")
 
+            val uid = FirebaseManager.auth?.currentUser?.uid
             val tokenData = mapOf(
                 "token" to token,
                 "platform" to "android",
                 "createdAt" to System.currentTimeMillis(),
-                "userId" to (FirebaseManager.auth?.currentUser?.uid ?: "anonymous")
+                "userId" to (uid ?: "anonymous")
             )
 
-            database.getReference("fcmTokens").child(sanitizedToken).setValue(tokenData)
-            
-            FirebaseManager.auth?.currentUser?.uid?.let { uid ->
-                database.getReference("users").child(uid).child("fcmTokens").child(sanitizedToken).setValue(tokenData)
+            firestore.collection("fcmTokens")
+                .document(sanitizedToken)
+                .set(tokenData, SetOptions.merge())
+                .addOnFailureListener { e ->
+                    Log.w("FCMService", "Failed to save FCM token: ${e.message}")
+                }
+
+            if (uid != null) {
+                firestore.collection("users")
+                    .document(uid)
+                    .set(mapOf("fcmToken" to token), SetOptions.merge())
+                    .addOnFailureListener { e ->
+                        Log.w("FCMService", "Failed to attach FCM token to user: ${e.message}")
+                    }
             }
         }
     }

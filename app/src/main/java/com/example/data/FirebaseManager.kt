@@ -2,10 +2,16 @@ package com.example.data
 
 import android.content.Context
 import android.util.Log
+import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.auth.auth
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.firestore
+import com.google.firebase.firestore.firestoreSettings
+import com.google.firebase.firestore.persistentCacheSettings
 import com.google.firebase.messaging.FirebaseMessaging
+import com.google.firebase.messaging.messaging
 
 object FirebaseManager {
     private const val TAG = "FirebaseManager"
@@ -14,7 +20,7 @@ object FirebaseManager {
 
     var auth: FirebaseAuth? = null
         private set
-    var db: FirebaseDatabase? = null
+    var firestore: FirebaseFirestore? = null
         private set
     var messaging: FirebaseMessaging? = null
         private set
@@ -28,22 +34,31 @@ object FirebaseManager {
                 apps[0]
             }
             if (app != null) {
-                auth = FirebaseAuth.getInstance()
-                db = FirebaseDatabase.getInstance()
+                auth = Firebase.auth
+                val db = Firebase.firestore
                 try {
-                    db?.setPersistenceEnabled(true)
+                    db.firestoreSettings = firestoreSettings {
+                        setLocalCacheSettings(persistentCacheSettings {})
+                    }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Persistence already enabled or failed: ${e.message}")
+                    Log.w(TAG, "Firestore settings already configured: ${e.message}")
                 }
-                messaging = FirebaseMessaging.getInstance()
+                firestore = db
+
+                messaging = Firebase.messaging
+                messaging?.subscribeToTopic("blood_requests")
+                    ?.addOnFailureListener { e ->
+                        Log.w(TAG, "Topic subscription warning: ${e.message}")
+                    }
+
                 isInitialized = true
-                Log.d(TAG, "Firebase initialized successfully.")
+                Log.d(TAG, "Firebase initialized successfully for project: ${app.options.projectId}")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Firebase initialization failed: ${e.message}. Using offline local database fallback.")
             isInitialized = false
             auth = null
-            db = null
+            firestore = null
             messaging = null
         }
     }
